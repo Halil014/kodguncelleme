@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Palet Sayma Uygulaması</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tone.js for tactile audio feedback -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@700&display=swap');
+    :root {
+      --sat: env(safe-area-inset-top, 0px);
+      --sab: env(safe-area-inset-bottom, 0px);
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      padding-top: var(--sat);
+      padding-bottom: max(12px, var(--sab));
+    }
+    .font-mono-numbers {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Dokunulduğunda titreme yapmayan net basma efekti */
+    .btn-press:active {
+      opacity: 0.85;
+      transform: translateY(1px);
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between">
+
+  <!-- Üst Başlık ve Durum Barı -->
+  <header class="bg-slate-800/90 border-b border-slate-700 sticky top-0 z-30 px-4 py-3">
+    <div class="max-w-md mx-auto flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <div class="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold text-sm">
+          #
+        </div>
+        <div>
+          <h1 class="font-bold text-base text-white leading-tight">Palet & Araç Sayacı</h1>
+          <p class="text-[11px] text-slate-400">Hızlı ve Kalıcı Depo Sayımı</p>
+        </div>
+      </div>
+
+      <!-- Durum ve Ses -->
+      <div class="flex items-center space-x-2">
+        <button id="soundToggleBtn" class="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition" title="Ses Aç/Kapat">
+          <svg id="soundOnIcon" class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          </svg>
+          <svg id="soundOffIcon" class="w-4 h-4 text-slate-400 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+          </svg>
+        </button>
+
+        <div class="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-slate-700/60 border border-slate-600/50 text-[11px] text-slate-300">
+          <span class="w-2 h-2 rounded-full bg-emerald-400" id="syncDot"></span>
+          <span id="syncText">Hazır</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-md w-full mx-auto p-3 flex flex-col justify-start space-y-3">
+
+    <!-- Toplam Sevkiyat Özeti -->
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-3 shadow">
+      <div class="flex items-center justify-between text-xs">
+        <div class="flex items-center space-x-1.5">
+          <span class="text-slate-400">Toplam Yüklenen:</span>
+          <span id="grandTotalBadge" class="bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded text-xs font-mono">0 Ünite</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button id="setTargetBtn" class="text-xs text-emerald-400 hover:underline">
+            Hedef: <span id="targetDisplay" class="font-bold">Yok</span>
+          </button>
+          <button id="openNotesBtn" class="bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-xs text-slate-200">
+            Not
+          </button>
+        </div>
+      </div>
+
+      <div id="targetProgressBarContainer" class="mt-2 hidden">
+        <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+          <span>Hedef Tamamlanma</span>
+          <span id="targetProgressPercent" class="text-emerald-400 font-semibold">0%</span>
+        </div>
+        <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-700">
+          <div id="targetProgressBar" class="bg-emerald-500 h-full transition-all duration-150" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ANA SAYAÇLAR: PALET & MP ARAÇ (YAN YANA) -->
+    <div class="grid grid-cols-2 gap-2.5">
+      <!-- PALET KARTI -->
+      <div class="bg-slate-800 border-2 border-emerald-500/40 rounded-2xl p-3 flex flex-col items-center justify-between text-center shadow">
+        <span class="text-xs font-bold text-emerald-400 uppercase tracking-wide">PALET</span>
+        
+        <div id="countDisplay" class="font-mono-numbers text-5xl font-black text-white my-1 select-none">
+          0
+        </div>
+
+        <button id="incrementBtn" class="btn-press w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm rounded-xl border-b-4 border-emerald-800 mb-2">
+          +1 PALET
+        </button>
+
+        <div class="grid grid-cols-3 gap-1 w-full">
+          <button id="decrementBtn" class="btn-press py-1.5 bg-slate-900 border border-slate-700 text-rose-400 font-bold text-xs rounded-lg hover:bg-slate-700">
+            -1
+          </button>
+          <button id="add5Btn" class="btn-press py-1.5 bg-slate-900 border border-slate-700 text-emerald-400 font-bold text-xs rounded-lg hover:bg-slate-700">
+            +5
+          </button>
+          <button id="add10Btn" class="btn-press py-1.5 bg-slate-900 border border-slate-700 text-emerald-400 font-bold text-xs rounded-lg hover:bg-slate-700">
+            +10
+          </button>
+        </div>
+      </div>
+
+      <!-- MP ARAÇ KARTI -->
+      <div class="bg-slate-800 border-2 border-purple-500/40 rounded-2xl p-3 flex flex-col items-center justify-between text-center shadow">
+        <span class="text-xs font-bold text-purple-400 uppercase tracking-wide">MP ARAÇ</span>
+        
+        <div id="mpVehicleDisplay" class="font-mono-numbers text-5xl font-black text-white my-1 select-none">
+          0
+        </div>
+
+        <button id="incrementMpBtn" class="btn-press w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-black text-sm rounded-xl border-b-4 border-purple-800 mb-2">
+          +1 MP ARAÇ
+        </button>
+
+        <div class="grid grid-cols-3 gap-1 w-full">
+          <button id="decrementMpBtn" class="btn-press py-1.5 bg-slate-900 border border-slate-700 text-rose-400 font-bold text-xs rounded-lg hover:bg-slate-700">
+            -1
+          </button>
+          <button id="add5MpBtn" class="btn-press py-1.5 bg-slate-900 border border-slate-700 text-purple-400 font-bold text-xs rounded-lg hover:bg-slate-700">
+            +5
+          </button>
+          <button id="add10MpBtn" class="btn-press py-1.5 bg-slate-900 border border-slate-700 text-purple-400 font-bold text-xs rounded-lg hover:bg-slate-700">
+            +10
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- EK SAYAÇLAR: DEMİR ARABA & MOBİL ARABA (KOMPAKT) -->
+    <div class="grid grid-cols-2 gap-2.5">
+      <!-- DEMİR ARABA -->
+      <div class="bg-slate-800 border border-blue-500/40 rounded-xl p-2.5 flex flex-col justify-between shadow">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs font-bold text-blue-400">Demir Araba</span>
+          <span id="ironCartDisplay" class="font-mono-numbers text-2xl font-bold text-white">0</span>
+        </div>
+
+        <button id="incrementIronBtn" class="btn-press w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg border-b-2 border-blue-800 mb-1.5">
+          +1 Demir Araba
+        </button>
+
+        <div class="grid grid-cols-2 gap-1">
+          <button id="decrementIronBtn" class="btn-press py-1 bg-slate-900 border border-slate-700 text-rose-400 font-bold text-[11px] rounded hover:bg-slate-700">
+            -1 Düş
+          </button>
+          <button id="add5IronBtn" class="btn-press py-1 bg-slate-900 border border-slate-700 text-blue-400 font-bold text-[11px] rounded hover:bg-slate-700">
+            +5 Ekle
+          </button>
+        </div>
+      </div>
+
+      <!-- MOBİL ARABA -->
+      <div class="bg-slate-800 border border-amber-500/40 rounded-xl p-2.5 flex flex-col justify-between shadow">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs font-bold text-amber-400">Mobil Araba</span>
+          <span id="mobileCartDisplay" class="font-mono-numbers text-2xl font-bold text-white">0</span>
+        </div>
+
+        <button id="incrementMobileBtn" class="btn-press w-full py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg border-b-2 border-amber-800 mb-1.5">
+          +1 Mobil Araba
+        </button>
+
+        <div class="grid grid-cols-2 gap-1">
+          <button id="decrementMobileBtn" class="btn-press py-1 bg-slate-900 border border-slate-700 text-rose-400 font-bold text-[11px] rounded hover:bg-slate-700">
+            -1 Düş
+          </button>
+          <button id="add5MobileBtn" class="btn-press py-1 bg-slate-900 border border-slate-700 text-amber-400 font-bold text-[11px] rounded hover:bg-slate-700">
+            +5 Ekle
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Son İşlemler Listesi -->
+    <div class="bg-slate-800/90 border border-slate-700 rounded-xl p-3">
+      <div class="flex items-center justify-between mb-1.5 pb-1.5 border-b border-slate-700">
+        <span class="text-xs text-slate-300">
+          Son İşlem: <strong id="lastActionText" class="text-amber-400 font-medium">Hazır</strong>
+        </span>
+        <button id="clearLogBtn" class="text-[11px] text-slate-400 hover:text-rose-400">Listeyi Temizle</button>
+      </div>
+
+      <div id="logContainer" class="max-h-20 overflow-y-auto space-y-1 text-xs font-mono">
+        <p class="text-slate-500 italic text-center py-1 text-[11px]">Henüz sayım yapılmadı</p>
+      </div>
+    </div>
+
+    <!-- Alt Sıfırlama Butonu -->
+    <div class="flex justify-between items-center px-1">
+      <span class="text-[11px] text-slate-400">Veriler tarayıcınıza kaydedilir.</span>
+      <button id="resetModalOpenBtn" class="text-xs text-rose-400 hover:text-rose-300 underline font-medium py-1 px-2 rounded hover:bg-rose-500/10">
+        Sayaçları Sıfırla
+      </button>
+    </div>
+  </main>
+
+  <!-- Hedef Belirleme Modalı -->
+  <div id="targetModal" class="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-800 border border-slate-700 w-full max-w-sm rounded-xl p-4 shadow-xl">
+      <h3 class="text-sm font-bold text-white mb-1">Hedef Palet Belirle</h3>
+      <p class="text-xs text-slate-400 mb-3">Tır kapasitesi veya hedef miktarını girin.</p>
+      
+      <input type="number" id="targetInput" min="0" placeholder="Örn: 33" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white mb-3 focus:outline-none focus:border-emerald-500">
+      
+      <div class="flex space-x-2">
+        <button id="cancelTargetBtn" class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold rounded-lg">İptal</button>
+        <button id="removeTargetBtn" class="py-2 px-3 bg-rose-900/40 text-rose-300 text-xs font-semibold rounded-lg">Hedefi Kaldır</button>
+        <button id="saveTargetBtn" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg">Kaydet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notlar Modalı -->
+  <div id="notesModal" class="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-800 border border-slate-700 w-full max-w-sm rounded-xl p-4 shadow-xl">
+      <h3 class="text-sm font-bold text-white mb-1">Sevkiyat Notu</h3>
+      <p class="text-xs text-slate-400 mb-3">Plaka no, lot kodu veya not ekleyin.</p>
+      
+      <textarea id="notesInput" rows="3" placeholder="Örn: 34 AB 123 tırı yüklemesi." class="w-full bg-slate-900 border border-slate-600 rounded-lg p-2.5 text-white text-xs mb-3 focus:outline-none focus:border-emerald-500"></textarea>
+      
+      <div class="flex space-x-2">
+        <button id="cancelNotesBtn" class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold rounded-lg">Kapat</button>
+        <button id="saveNotesBtn" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg">Notu Kaydet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sıfırlama Onay Modalı -->
+  <div id="resetConfirmModal" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-800 border border-rose-900/60 w-full max-w-sm rounded-xl p-4 shadow-xl text-center">
+      <h3 class="text-base font-bold text-white mb-1">Sayaçları Sıfırla?</h3>
+      <p class="text-xs text-slate-400 mb-4">Palet, MP Araç, Demir ve Mobil Araba sayaçları sıfırlanacaktır.</p>
+      
+      <div class="flex space-x-2">
+        <button id="cancelResetBtn" class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold rounded-lg">Vazgeç</button>
+        <button id="confirmResetBtn" class="flex-1 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-lg">Sıfırla</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bildirim Mesajı (Toast) -->
+  <div id="toastNotification" class="fixed bottom-3 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-600 text-slate-100 text-xs px-3 py-1.5 rounded-lg shadow-xl z-50 hidden">
+    <span id="toastMessage">İşlem yapıldı</span>
+  </div>
+
+  <script>
+    // Uygulama Durumu
+    const state = {
+      count: 0,
+      mpVehicleCount: 0,
+      ironCartCount: 0,
+      mobileCartCount: 0,
+      target: null,
+      notes: "",
+      history: []
+    };
+
+    let soundEnabled = true;
+    let synth = null;
+    let audioInitialized = false;
+
+    // Web Audio Hazırlığı (Sadece ses açık ve kullanıcı dokununca başlar)
+    function setupAudio() {
+      if (audioInitialized) return;
+      try {
+        if (window.Tone) {
+          synth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: 'triangle' },
+            envelope: { attack: 0.002, decay: 0.08, sustain: 0, release: 0.05 }
+          }).toDestination();
+          synth.volume.value = -8;
+          Tone.start();
+          audioInitialized = true;
+        }
+      } catch (e) {
+        // Sessiz hata yakalama
+      }
+    }
+
+    function playBeep(note = "C5") {
+      if (!soundEnabled) return;
+      setupAudio();
+      try {
+        if (synth) {
+          synth.triggerAttackRelease(note, "32n");
+        }
+      } catch (e) {}
+
+      if (navigator.vibrate) {
+        try { navigator.vibrate(15); } catch(e){}
+      }
+    }
+
+    // DOM Elemanları
+    const countDisplay = document.getElementById('countDisplay');
+    const mpVehicleDisplay = document.getElementById('mpVehicleDisplay');
+    const ironCartDisplay = document.getElementById('ironCartDisplay');
+    const mobileCartDisplay = document.getElementById('mobileCartDisplay');
+    const grandTotalBadge = document.getElementById('grandTotalBadge');
+    const lastActionText = document.getElementById('lastActionText');
+    const logContainer = document.getElementById('logContainer');
+
+    const incrementBtn = document.getElementById('incrementBtn');
+    const decrementBtn = document.getElementById('decrementBtn');
+    const add5Btn = document.getElementById('add5Btn');
+    const add10Btn = document.getElementById('add10Btn');
+
+    const incrementMpBtn = document.getElementById('incrementMpBtn');
+    const decrementMpBtn = document.getElementById('decrementMpBtn');
+    const add5MpBtn = document.getElementById('add5MpBtn');
+    const add10MpBtn = document.getElementById('add10MpBtn');
+
+    const incrementIronBtn = document.getElementById('incrementIronBtn');
+    const decrementIronBtn = document.getElementById('decrementIronBtn');
+    const add5IronBtn = document.getElementById('add5IronBtn');
+
+    const incrementMobileBtn = document.getElementById('incrementMobileBtn');
+    const decrementMobileBtn = document.getElementById('decrementMobileBtn');
+    const add5MobileBtn = document.getElementById('add5MobileBtn');
+
+    const targetDisplay = document.getElementById('targetDisplay');
+    const setTargetBtn = document.getElementById('setTargetBtn');
+    const targetModal = document.getElementById('targetModal');
+    const targetInput = document.getElementById('targetInput');
+    const saveTargetBtn = document.getElementById('saveTargetBtn');
+    const cancelTargetBtn = document.getElementById('cancelTargetBtn');
+    const removeTargetBtn = document.getElementById('removeTargetBtn');
+    const targetProgressBarContainer = document.getElementById('targetProgressBarContainer');
+    const targetProgressBar = document.getElementById('targetProgressBar');
+    const targetProgressPercent = document.getElementById('targetProgressPercent');
+
+    const openNotesBtn = document.getElementById('openNotesBtn');
+    const notesModal = document.getElementById('notesModal');
+    const notesInput = document.getElementById('notesInput');
+    const saveNotesBtn = document.getElementById('saveNotesBtn');
+    const cancelNotesBtn = document.getElementById('cancelNotesBtn');
+
+    const resetModalOpenBtn = document.getElementById('resetModalOpenBtn');
+    const resetConfirmModal = document.getElementById('resetConfirmModal');
+    const confirmResetBtn = document.getElementById('confirmResetBtn');
+    const cancelResetBtn = document.getElementById('cancelResetBtn');
+    const clearLogBtn = document.getElementById('clearLogBtn');
+
+    const soundToggleBtn = document.getElementById('soundToggleBtn');
+    const soundOnIcon = document.getElementById('soundOnIcon');
+    const soundOffIcon = document.getElementById('soundOffIcon');
+    const toastNotification = document.getElementById('toastNotification');
+    const toastMessage = document.getElementById('toastMessage');
+
+    // LocalStorage Anahtarı
+    const LOCAL_KEY = 'palet_sayar_tam_veri_v3';
+
+    function loadSavedData() {
+      try {
+        const raw = localStorage.getItem(LOCAL_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          state.count = Number(parsed.count) || 0;
+          state.mpVehicleCount = Number(parsed.mpVehicleCount) || 0;
+          state.ironCartCount = Number(parsed.ironCartCount) || 0;
+          state.mobileCartCount = Number(parsed.mobileCartCount) || 0;
+          state.target = parsed.target ? Number(parsed.target) : null;
+          state.notes = parsed.notes || "";
+          state.history = Array.isArray(parsed.history) ? parsed.history : [];
+        }
+      } catch (err) {
+        console.warn("Kayıt okuma hatası:", err);
+      }
+    }
+
+    function saveData() {
+      try {
+        localStorage.setItem(LOCAL_KEY, JSON.stringify({
+          count: state.count,
+          mpVehicleCount: state.mpVehicleCount,
+          ironCartCount: state.ironCartCount,
+          mobileCartCount: state.mobileCartCount,
+          target: state.target,
+          notes: state.notes,
+          history: state.history.slice(0, 30)
+        }));
+      } catch (err) {
+        console.warn("Kayıt yazma hatası:", err);
+      }
+    }
+
+    function showToast(msg) {
+      toastMessage.textContent = msg;
+      toastNotification.classList.remove('hidden');
+      clearTimeout(window.__toastTimeout);
+      window.__toastTimeout = setTimeout(() => {
+        toastNotification.classList.add('hidden');
+      }, 1600);
+    }
+
+    function renderUI() {
+      countDisplay.textContent = state.count;
+      mpVehicleDisplay.textContent = state.mpVehicleCount;
+      ironCartDisplay.textContent = state.ironCartCount;
+      mobileCartDisplay.textContent = state.mobileCartCount;
+
+      const total = state.count + state.mpVehicleCount + state.ironCartCount + state.mobileCartCount;
+      grandTotalBadge.textContent = `${total} Ünite`;
+
+      // Hedef kontrolü
+      if (state.target && state.target > 0) {
+        targetDisplay.textContent = `${state.target}`;
+        targetProgressBarContainer.classList.remove('hidden');
+        const pct = Math.min(100, Math.round((state.count / state.target) * 100));
+        targetProgressBar.style.width = pct + '%';
+        targetProgressPercent.textContent = `%${pct} (${state.count}/${state.target})`;
+      } else {
+        targetDisplay.textContent = 'Yok';
+        targetProgressBarContainer.classList.add('hidden');
+      }
+
+      // Geçmiş listesi
+      if (!state.history.length) {
+        logContainer.innerHTML = '<p class="text-slate-500 italic text-center py-1 text-[11px]">Henüz sayım yapılmadı</p>';
+      } else {
+        logContainer.innerHTML = '';
+        state.history.slice(0, 10).forEach(item => {
+          const div = document.createElement('div');
+          div.className = "flex justify-between py-0.5 border-b border-slate-700/40 text-[11px]";
+          const isPos = item.change > 0;
+          div.innerHTML = `
+            <span class="${isPos ? 'text-emerald-400' : 'text-rose-400'} font-semibold">${item.action} (${isPos ? '+' : ''}${item.change})</span>
+            <span class="text-slate-400">${item.time}</span>
+          `;
+          logContainer.appendChild(div);
+        });
+      }
+    }
+
+    function updateCounter(key, delta, label, notePitch = "C5") {
+      const prev = state[key];
+      const next = Math.max(0, prev + delta);
+
+      if (delta < 0 && prev === 0) {
+        showToast(`${label} zaten 0`);
+        return;
+      }
+
+      state[key] = next;
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+      
+      lastActionText.textContent = `${label} (${delta > 0 ? '+' : ''}${delta})`;
+      state.history.unshift({
+        action: label,
+        change: delta,
+        time: timeStr
+      });
+
+      playBeep(delta > 0 ? notePitch : "G4");
+      renderUI();
+      saveData();
+    }
+
+    // Palet Olayları
+    incrementBtn.addEventListener('click', () => updateCounter('count', 1, 'Palet', 'C5'));
+    decrementBtn.addEventListener('click', () => updateCounter('count', -1, 'Palet'));
+    add5Btn.addEventListener('click', () => updateCounter('count', 5, 'Palet', 'C5'));
+    add10Btn.addEventListener('click', () => updateCounter('count', 10, 'Palet', 'C5'));
+
+    // MP Araç Olayları
+    incrementMpBtn.addEventListener('click', () => updateCounter('mpVehicleCount', 1, 'MP Araç', 'E5'));
+    decrementMpBtn.addEventListener('click', () => updateCounter('mpVehicleCount', -1, 'MP Araç'));
+    add5MpBtn.addEventListener('click', () => updateCounter('mpVehicleCount', 5, 'MP Araç', 'E5'));
+    add10MpBtn.addEventListener('click', () => updateCounter('mpVehicleCount', 10, 'MP Araç', 'E5'));
+
+    // Demir Araba Olayları
+    incrementIronBtn.addEventListener('click', () => updateCounter('ironCartCount', 1, 'Demir Araba', 'F5'));
+    decrementIronBtn.addEventListener('click', () => updateCounter('ironCartCount', -1, 'Demir Araba'));
+    add5IronBtn.addEventListener('click', () => updateCounter('ironCartCount', 5, 'Demir Araba', 'F5'));
+
+    // Mobil Araba Olayları
+    incrementMobileBtn.addEventListener('click', () => updateCounter('mobileCartCount', 1, 'Mobil Araba', 'G5'));
+    decrementMobileBtn.addEventListener('click', () => updateCounter('mobileCartCount', -1, 'Mobil Araba'));
+    add5MobileBtn.addEventListener('click', () => updateCounter('mobileCartCount', 5, 'Mobil Araba', 'G5'));
+
+    // Hedef Modalı
+    setTargetBtn.addEventListener('click', () => {
+      targetInput.value = state.target || '';
+      targetModal.classList.remove('hidden');
+    });
+    cancelTargetBtn.addEventListener('click', () => targetModal.classList.add('hidden'));
+    removeTargetBtn.addEventListener('click', () => {
+      state.target = null;
+      targetModal.classList.add('hidden');
+      renderUI();
+      saveData();
+      showToast('Hedef kaldırıldı');
+    });
+    saveTargetBtn.addEventListener('click', () => {
+      const val = parseInt(targetInput.value, 10);
+      if (val > 0) {
+        state.target = val;
+        targetModal.classList.add('hidden');
+        renderUI();
+        saveData();
+        showToast(`Hedef ${val} olarak ayarlandı`);
+      }
+    });
+
+    // Not Modalı
+    openNotesBtn.addEventListener('click', () => {
+      notesInput.value = state.notes || '';
+      notesModal.classList.remove('hidden');
+    });
+    cancelNotesBtn.addEventListener('click', () => notesModal.classList.add('hidden'));
+    saveNotesBtn.addEventListener('click', () => {
+      state.notes = notesInput.value.trim();
+      notesModal.classList.add('hidden');
+      saveData();
+      showToast('Not kaydedildi');
+    });
+
+    // Sıfırlama
+    resetModalOpenBtn.addEventListener('click', () => resetConfirmModal.classList.remove('hidden'));
+    cancelResetBtn.addEventListener('click', () => resetConfirmModal.classList.add('hidden'));
+    confirmResetBtn.addEventListener('click', () => {
+      state.count = 0;
+      state.mpVehicleCount = 0;
+      state.ironCartCount = 0;
+      state.mobileCartCount = 0;
+      state.history = [];
+      lastActionText.textContent = "Sıfırlandı";
+      resetConfirmModal.classList.add('hidden');
+      renderUI();
+      saveData();
+      showToast('Tüm sayaçlar sıfırlandı');
+    });
+
+    clearLogBtn.addEventListener('click', () => {
+      state.history = [];
+      renderUI();
+      saveData();
+      showToast('Geçmiş temizlendi');
+    });
+
+    // Ses Aç/Kapa
+    soundToggleBtn.addEventListener('click', () => {
+      soundEnabled = !soundEnabled;
+      if (soundEnabled) {
+        soundOnIcon.classList.remove('hidden');
+        soundOffIcon.classList.add('hidden');
+        showToast('Ses açıldı');
+      } else {
+        soundOnIcon.classList.add('hidden');
+        soundOffIcon.classList.remove('hidden');
+        showToast('Ses kapatıldı');
+      }
+    });
+
+    // Sayfa Yüklendiğinde Başlat
+    window.addEventListener('DOMContentLoaded', () => {
+      loadSavedData();
+      renderUI();
+    });
+  </script>
+</body>
+</html>
